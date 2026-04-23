@@ -1,0 +1,41 @@
+<div class="mb-4">
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/admin" class="text-info text-decoration-none">Admin</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Assign Containers: <%= user.name %></li>
+    </ol>
+  </nav>
+  <h1>Assign Containers to <%= user.name %></h1>
+  <p class="text-muted">Select which containers this user is authorized to monitor.</p>
+</div>
+
+<div class="card shadow-md">
+  <form action="/admin/users/<%= user.id %>/assign" method="POST">
+    <div class="card-body">
+      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
+        <% containers.forEach(c => { %>
+          <div class="col">
+            <div class="form-check card bg-dark p-3 border-secondary">
+              <input class="form-check-input ms-0 me-2" type="checkbox" name="containerIds" value="<%= c.id %>" id="c-<%= c.id %>" <%= assignedIds.includes(c.id) ? 'checked' : '' %>>
+              <label class="form-check-label ps-4" for="c-<%= c.id %>">
+                <div class="fw-bold"><%= c.name %></div>
+                <div class="small text-muted text-truncate"><%= c.image %></div>
+                <div class="badge <%= c.status.includes('Up') ? 'bg-success' : 'bg-danger' %> mt-1"><%= c.status %></div>
+              </label>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+
+      <% if (containers.length === 0) { %>
+        <div class="text-center py-4">
+          <p class="text-muted">No containers found. Try refreshing the Docker service sync.</p>
+        </div>
+      <% } %>
+    </div>
+    <div class="card-footer bg-dark border-top border-secondary text-end">
+      <a href="/admin" class="btn btn-secondary me-2">Cancel</a>
+      <button type="submit" class="btn btn-primary">Save Assignments</button>
+    </div>
+  </form>
+</div>

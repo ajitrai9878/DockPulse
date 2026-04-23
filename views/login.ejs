@@ -1,0 +1,50 @@
+<div class="row justify-content-center align-items-center" style="min-height: 80vh;">
+  <div class="col-md-4">
+    <div class="card shadow-lg p-4 bg-dark border-secondary">
+      <div class="text-center mb-4">
+        <div class="display-4 text-info mb-2">
+          <i class="bi bi-box-seam"></i>
+        </div>
+        <h2 class="text-white">Sign In</h2>
+        <p class="text-secondary small">DockPulse Management Portal</p>
+      </div>
+
+      <% if (error) { %>
+        <div class="alert alert-danger bg-danger text-white border-0 shadow-sm mb-4">
+          <i class="bi bi-exclamation-triangle me-2"></i><%= error %>
+        </div>
+      <% } %>
+
+      <form action="/auth/login" method="POST">
+        <div class="mb-3">
+          <label class="form-label text-secondary small">Email Address</label>
+          <div class="input-group">
+            <span class="input-group-text bg-secondary border-0 text-white"><i class="bi bi-envelope"></i></span>
+            <input type="email" name="email" class="form-control bg-dark text-white border-secondary" placeholder="name@example.com" required>
+          </div>
+        </div>
+        <div class="mb-4">
+          <label class="form-label text-secondary small">Password</label>
+          <div class="input-group">
+            <span class="input-group-text bg-secondary border-0 text-white"><i class="bi bi-lock"></i></span>
+            <input type="password" name="password" class="form-control bg-dark text-white border-secondary" placeholder="Enter your password" required>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-info w-100 py-2 fw-bold text-dark border-0 shadow">
+          Access Dashboard
+        </button>
+      </form>
+      
+      <div class="mt-4 text-center">
+        <p class="text-secondary x-small mb-0">System status: <span class="text-success">Online</span></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .input-group-text { min-width: 45px; justify-content: center; }
+  .x-small { font-size: 0.75rem; }
+  .card { border-radius: 1rem; }
+  .form-control:focus { background-color: #1a1d20 !important; border-color: #0dcaf0; box-shadow: 0 0 0 0.25rem rgba(13, 202, 240, 0.25); color: white; }
+</style>

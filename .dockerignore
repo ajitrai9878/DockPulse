@@ -1,0 +1,8 @@
+node_modules
+.git
+.env
+*.log
+README.md
+implementation_plan.md
+task.md
+walkthrough.md

@@ -1,0 +1,181 @@
+<div class="mb-4">
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/" class="text-info text-decoration-none">Dashboard</a></li>
+      <li class="breadcrumb-item active" aria-current="page"><%= container.name %></li>
+    </ol>
+  </nav>
+  
+  <div class="d-flex justify-content-between align-items-center">
+    <div>
+      <h1 class="mb-0"><%= container.name %></h1>
+      <p class="text-muted"><%= container.image %></p>
+    </div>
+    <div class="text-end">
+      <span class="badge bg-success mb-1"><%= container.status %></span>
+      <p class="small text-muted mb-0">Started: <%= new Date(container.created).toLocaleString() %></p>
+    </div>
+  </div>
+</div>
+
+<div class="row mb-4">
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title text-muted mb-3"><i class="bi bi-cpu me-2"></i>CPU Usage</h5>
+        <div class="d-flex align-items-center">
+          <div class="progress flex-grow-1" style="height: 25px; background-color: #334155;">
+            <div id="cpu-bar" class="progress-bar" role="progressbar" style="width: <%= metrics.cpu %>%; background-color: #38bdf8;" aria-valuenow="<%= metrics.cpu %>" aria-valuemin="0" aria-valuemax="100"></div>
+          </div>
+          <span class="ms-3 fw-bold fs-4"><span id="cpu-text"><%= metrics.cpu %></span>%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title text-muted mb-3"><i class="bi bi-memory me-2"></i>Memory Usage</h5>
+        <div class="d-flex align-items-center">
+          <div class="progress flex-grow-1" style="height: 25px; background-color: #334155;">
+            <div id="ram-bar" class="progress-bar" role="progressbar" style="width: <%= metrics.ram.percent %>%; background-color: #a855f7;" aria-valuenow="<%= metrics.ram.percent %>" aria-valuemin="0" aria-valuemax="100"></div>
+          </div>
+          <span class="ms-3 fw-bold fs-4"><span id="ram-text"><%= metrics.ram.usage %></span>MB</span>
+        </div>
+        <p class="small text-muted mt-2 mb-0">Limit: <%= metrics.ram.limit %>MB</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-md">
+  <div class="card-header bg-dark d-flex justify-content-between align-items-center">
+    <span class="fw-bold"><i class="bi bi-terminal me-2"></i>Live Logs</span>
+    <div class="d-flex gap-2">
+      <button class="btn btn-sm btn-outline-secondary" onclick="clearLogs()">Clear</button>
+      <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#filterModal">
+        <i class="bi bi-filter me-1"></i>Filter Logs
+      </button>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div id="logs-container">
+      <div id="logs-content"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Filter Modal -->
+<div class="modal fade" id="filterModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content bg-dark border-secondary">
+      <div class="modal-header">
+        <h5 class="modal-title">Retrieve Historical Logs</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Since</label>
+          <input type="datetime-local" id="since-date" class="form-control bg-secondary text-white border-0">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Until</label>
+          <input type="datetime-local" id="until-date" class="form-control bg-secondary text-white border-0">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-info" onclick="fetchHistoricalLogs()">Fetch Logs</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const containerId = '<%= container.id %>';
+  const logsContent = document.getElementById('logs-content');
+  const logsContainer = document.getElementById('logs-container');
+
+  // 1. Logs via SSE (Dozzle-style Architecture)
+  console.log('SSE: Initializing EventSource for', containerId);
+  const eventSource = new EventSource(`/container/${containerId}/stream`);
+
+  eventSource.onopen = () => {
+    console.log('SSE: Connection established');
+  };
+
+  eventSource.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.log === '[System] Connected to log stream') {
+        console.log('SSE: Connected to container log stream');
+        return;
+      }
+      
+      // The log might be a single line or a joined history block
+      appendLog(msg.log);
+    } catch (e) {
+      // In case of non-JSON data or heartbeat comments
+      if (event.data) appendLog(event.data);
+    }
+  };
+
+  eventSource.onerror = (err) => {
+    console.error('SSE Error:', err);
+    // Browser automatically reconnects, but we can log it.
+  };
+
+  function stripAnsi(text) {
+    return text.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+  }
+
+  function appendLog(text) {
+    const div = document.createElement('div');
+    div.className = 'log-line';
+    div.innerText = stripAnsi(text);
+    logsContent.appendChild(div);
+    
+    // Auto-scroll to bottom
+    logsContainer.scrollTop = logsContainer.scrollHeight;
+  }
+
+  function clearLogs() {
+    logsContent.innerHTML = '';
+  }
+
+  async function fetchHistoricalLogs() {
+    const since = document.getElementById('since-date').value;
+    const until = document.getElementById('until-date').value;
+    
+    let url = `/container/${containerId}/logs?`;
+    if (since) url += `since=${since}&`;
+    if (until) url += `until=${until}&`;
+
+    try {
+      const resp = await fetch(url);
+      const data = await resp.json();
+      
+      if (data.logs) {
+        clearLogs();
+        appendLog('--- Historical Logs ---');
+        appendLog(data.logs);
+        bootstrap.Modal.getInstance(document.getElementById('filterModal')).hide();
+      }
+    } catch (err) {
+      console.error('Error fetching logs:', err);
+    }
+  }
+
+  // Optional: Update metrics via polling or additional socket events
+  // For MVP, we'll just show status at load time.
+</script>
+
+<style>
+  .log-line {
+    border-bottom: 1px solid #1e293b;
+    padding: 2px 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+</style>

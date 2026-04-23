@@ -1,0 +1,29 @@
+{
+  "name": "docker-container-monitoring-and-log-streaming-app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "seed": "node scripts/seed.js",
+    "db:reset": "node scripts/reset-db.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "dockerode": "^4.0.10",
+    "dotenv": "^17.4.2",
+    "ejs": "^5.0.2",
+    "express": "^5.2.1",
+    "express-ejs-layouts": "^2.5.1",
+    "express-session": "^1.19.0",
+    "morgan": "^1.10.1",
+    "mysql2": "^3.22.1",
+    "nodemailer": "^8.0.5",
+    "socket.io": "^4.8.3"
+  }
+}

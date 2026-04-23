@@ -1,0 +1,210 @@
+'use strict';
+
+const Docker = require('dockerode');
+const { pool } = require('../config/db');
+const emailService = require('./email.service');
+
+const docker = new Docker({
+  socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock',
+});
+
+// Events we care about
+const WATCHED_EVENTS = new Set(['die', 'stop', 'start', 'restart', 'destroy']);
+
+/**
+ * Fetch the last N log lines from a container (best-effort — may fail for destroyed containers).
+ */
+async function fetchLogs(containerId, tail = 50) {
+  try {
+    const container = docker.getContainer(containerId);
+    const buf = await container.logs({
+      stdout: true,
+      stderr: true,
+      follow: false,
+      timestamps: true,
+      tail,
+    });
+    let raw = buf.toString('utf-8');
+    // Strip Docker binary stream header bytes (first 8 bytes per chunk)
+    raw = raw.replace(/[\u0000-\u0008]/g, '');
+    // Strip ANSI codes
+    raw = raw.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+    return raw.trim();
+  } catch (err) {
+    return `[Logs unavailable: ${err.message}]`;
+  }
+}
+
+/**
+ * Fetch all alert emails that should be notified for a given container.
+ * - All admins with alert_email set.
+ * - All users assigned to this container with alert_email set.
+ * Returns a deduplicated array of emails.
+ */
+async function getRecipients(containerDbId) {
+  try {
+    // Admin emails
+    const [adminRows] = await pool.query(
+      `SELECT alert_email FROM users WHERE role = 'admin' AND alert_email IS NOT NULL AND alert_email != '' AND status = 'active'`
+    );
+
+    // User emails for assigned container
+    let userRows = [];
+    if (containerDbId) {
+      [userRows] = await pool.query(
+        `SELECT u.alert_email FROM users u
+         JOIN user_containers uc ON u.id = uc.user_id
+         WHERE uc.container_id = ? AND u.alert_email IS NOT NULL AND u.alert_email != '' AND u.status = 'active'`,
+        [containerDbId]
+      );
+    }
+
+    const emails = [
+      ...adminRows.map(r => r.alert_email),
+      ...userRows.map(r => r.alert_email),
+    ];
+
+    // Deduplicate
+    return [...new Set(emails)];
+  } catch (err) {
+    console.error('[EventMonitor] Failed to fetch recipients:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Resolve the DB id of a container from its name.
+ */
+async function resolveDbContainerId(containerName) {
+  try {
+    const [rows] = await pool.query(
+      'SELECT id FROM containers WHERE name = ? LIMIT 1',
+      [containerName]
+    );
+    return rows[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persist a container event to the DB for audit purposes.
+ */
+async function logEventToDB({ containerName, containerId, eventType, exitCode, rca, logs }) {
+  try {
+    await pool.query(
+      `INSERT INTO container_events
+         (container_name, container_id, event_type, exit_code, rca, logs_snapshot, occurred_at)
+       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+      [containerName, containerId, eventType, exitCode ?? null, rca, (logs || '').substring(0, 8000)]
+    );
+  } catch (err) {
+    console.error('[EventMonitor] Failed to log event to DB:', err.message);
+  }
+}
+
+/**
+ * Main handler for a single Docker event.
+ */
+async function handleEvent(event) {
+  if (!event || event.Type !== 'container') return;
+  if (!WATCHED_EVENTS.has(event.Action)) return;
+
+  const eventType     = event.Action;        // die | stop | start | restart | destroy
+  const containerId   = event.id;            // short/full container ID
+  const attrs         = event.Actor?.Attributes || {};
+  const containerName = attrs.name || containerId;
+  const image         = attrs.image || 'unknown';
+  const exitCode      = attrs.exitCode != null ? parseInt(attrs.exitCode, 10) : null;
+  const occurredAt    = new Date(event.time * 1000);
+
+  console.log(`[EventMonitor] ${eventType.toUpperCase()} → ${containerName} (exit: ${exitCode ?? '-'})`);
+
+  // Fetch logs (best-effort)
+  const logs = await fetchLogs(containerId);
+
+  // Build RCA
+  const rca = emailService.buildRCA ? emailService.buildRCA(eventType, exitCode, logs) : '';
+
+  // Resolve DB container id for user mapping
+  const dbContainerId = await resolveDbContainerId(containerName);
+
+  // Persist to DB
+  await logEventToDB({ containerName, containerId, eventType, exitCode, rca, logs });
+
+  // Get recipients
+  const recipients = await getRecipients(dbContainerId);
+  if (!recipients.length) {
+    console.log(`[EventMonitor] No alert emails configured — skipping notification for ${containerName}.`);
+    return;
+  }
+
+  // Send email
+  try {
+    await emailService.sendAlertEmail({
+      to: recipients,
+      containerName,
+      image,
+      eventType,
+      exitCode,
+      occurredAt,
+      logs,
+      rca,
+    });
+  } catch (err) {
+    console.error(`[EventMonitor] Email send failed for ${containerName}:`, err.message);
+  }
+}
+
+// ─── Stream Lifecycle ──────────────────────────────────────────────────────────
+
+let isRunning = false;
+
+async function startMonitor() {
+  if (isRunning) return;
+  isRunning = true;
+  console.log('[EventMonitor] 🚀 Starting Docker event stream monitor...');
+
+  const connect = async () => {
+    try {
+      const stream = await docker.getEvents({ filters: JSON.stringify({ type: ['container'] }) });
+
+      stream.on('data', (chunk) => {
+        try {
+          const events = chunk.toString('utf-8').trim().split('\n');
+          for (const raw of events) {
+            if (!raw) continue;
+            const event = JSON.parse(raw);
+            handleEvent(event).catch(err =>
+              console.error('[EventMonitor] handleEvent error:', err.message)
+            );
+          }
+        } catch (parseErr) {
+          // Ignore malformed chunks
+        }
+      });
+
+      stream.on('error', (err) => {
+        console.error('[EventMonitor] Stream error:', err.message, '— reconnecting in 5s');
+        isRunning = false;
+        setTimeout(() => { isRunning = false; startMonitor(); }, 5000);
+      });
+
+      stream.on('end', () => {
+        console.warn('[EventMonitor] Stream ended — reconnecting in 5s');
+        isRunning = false;
+        setTimeout(() => { isRunning = false; startMonitor(); }, 5000);
+      });
+
+      console.log('[EventMonitor] ✅ Listening for container events...');
+    } catch (err) {
+      console.error('[EventMonitor] Failed to connect to Docker daemon:', err.message, '— retrying in 10s');
+      isRunning = false;
+      setTimeout(() => startMonitor(), 10000);
+    }
+  };
+
+  await connect();
+}
+
+module.exports = { startMonitor };

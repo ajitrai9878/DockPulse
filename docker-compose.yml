@@ -8,10 +8,10 @@ services:
       - PORT=3000
       - DB_HOST=db
       - DB_PORT=3306
-      - DB_USER=root
-      - DB_PASSWORD=root
-      - DB_NAME=docker_monitor
-      - SESSION_SECRET=supersecret-prod-key
+      - DB_USER=${DB_USER:-root}
+      - DB_PASSWORD=${DB_PASSWORD:-root}
+      - DB_NAME=${DB_NAME:-docker_monitor}
+      - SESSION_SECRET=${SESSION_SECRET:-changeme-in-production}
       # ── SMTP Email Alerts ──────────────────────────────────────────────────────
       # Configure these to enable container event email notifications.
       - SMTP_HOST=${SMTP_HOST}
@@ -34,8 +34,8 @@ services:
     image: mysql:8
     container_name: docker-monitor-db
     environment:
-      - MYSQL_ROOT_PASSWORD=root
-      - MYSQL_DATABASE=docker_monitor
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD:-root}
+      - MYSQL_DATABASE=${DB_NAME:-docker_monitor}
     ports:
       - "3306:3306"
     volumes:

@@ -2,6 +2,13 @@
   <h1><i class="bi bi-grid-3x3-gap me-2"></i>Dashboard</h1>
   <div class="d-flex align-items-center gap-3">
     <div class="text-muted small">Showing assigned containers</div>
+    <button class="btn btn-sm d-flex align-items-center gap-1"
+            style="background:transparent;border:1px solid #30363d;color:#e6edf3;"
+            onclick="window.location.reload()"
+            title="Refresh Container List">
+      <i class="bi bi-arrow-clockwise"></i>
+      <span class="d-none d-md-inline">Refresh</span>
+    </button>
     <%# Alert email quick-set button %>
     <button class="btn btn-sm d-flex align-items-center gap-1"
             style="background:linear-gradient(135deg,#1a1f2e,#161b22);border:1px solid #30363d;color:<%= alertEmail ? '#58a6ff' : '#8b949e' %>;"
@@ -110,3 +117,20 @@
   }
 </style>
 
+<script>
+  // 1. Force reload if the page was loaded from browser back-forward cache
+  window.addEventListener('pageshow', function (event) {
+    if (event.persisted) {
+      window.location.reload();
+    }
+  });
+
+  // 2. Auto-refresh the dashboard every 30 seconds to keep container statuses up-to-date
+  setInterval(() => {
+    // Check if the modal is currently open. If not, refresh the page.
+    const modal = document.getElementById('alertEmailModal');
+    if (!modal.classList.contains('show')) {
+      window.location.reload();
+    }
+  }, 30000);
+</script>

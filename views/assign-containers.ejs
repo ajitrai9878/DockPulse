@@ -1,7 +1,7 @@
 <div class="mb-4">
   <nav aria-label="breadcrumb">
     <ol class="breadcrumb">
-      <li class="breadcrumb-item"><a href="/admin" class="text-info text-decoration-none">Admin</a></li>
+      <li class="breadcrumb-item"><a href="/admin" class="text-info text-decoration-none">Management</a></li>
       <li class="breadcrumb-item active" aria-current="page">Assign Containers: <%= user.name %></li>
     </ol>
   </nav>
@@ -29,7 +29,7 @@
 
       <% if (containers.length === 0) { %>
         <div class="text-center py-4">
-          <p class="text-muted">No containers found. Try refreshing the Docker service sync.</p>
+          <p class="text-muted">No active containers found in Docker.</p>
         </div>
       <% } %>
     </div>

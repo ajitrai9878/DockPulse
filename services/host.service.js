@@ -17,14 +17,38 @@ class HostService {
     let disk = { total: 'N/A', used: 'N/A', percent: 0 };
     try {
       if (process.platform !== 'win32') {
-        const { stdout } = await execPromise("df -h / | tail -1 | awk '{print $2,$3,$5}'");
-        const parts = stdout.trim().split(/\s+/);
-        if (parts.length === 3) {
-          disk = { 
-            total: parts[0], 
-            used: parts[1], 
-            percent: parseInt(parts[2].replace('%', '')) 
-          };
+        const { stdout } = await execPromise("df -h");
+        const lines = stdout.trim().split('\n');
+        
+        // Skip header
+        for (let i = 1; i < lines.length; i++) {
+          const parts = lines[i].split(/\s+/);
+          if (parts.length >= 6) {
+            const fs = parts[0];
+            const size = parts[1];
+            const used = parts[2];
+            const percent = parts[4];
+            const mount = parts[5];
+
+            // If we find C:\ or a common host mount point, prefer it
+            if (fs.includes('C:\\') || fs === 'C:' || mount === '/app') {
+              disk = { 
+                total: size, 
+                used: used, 
+                percent: parseInt(percent.replace('%', '')) 
+              };
+              break; 
+            }
+            
+            // Fallback to / if nothing better found yet
+            if (mount === '/' && disk.total === 'N/A') {
+              disk = { 
+                total: size, 
+                used: used, 
+                percent: parseInt(percent.replace('%', '')) 
+              };
+            }
+          }
         }
       }
     } catch (e) {

@@ -97,7 +97,7 @@
       <!-- LOGS TAB -->
       <div class="tab-pane fade show active" id="logs-tab">
         <div class="bg-dark d-flex justify-content-between align-items-center p-2 border-bottom border-secondary">
-          <input type="text" id="logSearchInput" placeholder="Search logs..." class="form-control form-control-sm bg-secondary text-white border-0 w-25" onkeyup="searchLogs()">
+          <input type="text" id="logSearchInput" placeholder="Search logs..." class="form-control form-control-sm bg-secondary text-white border-0 w-25">
           <div class="d-flex gap-2">
             <button class="btn btn-sm btn-outline-secondary" onclick="toggleWordWrap()" id="wrapBtn">Wrap: On</button>
             <button class="btn btn-sm btn-outline-primary" onclick="downloadLogs()"><i class="bi bi-download"></i></button>
@@ -257,9 +257,21 @@
   }
 
   function appendLog(text) {
+    const query = document.getElementById('logSearchInput').value.toLowerCase();
     const div = document.createElement('div');
     div.className = 'log-line';
-    div.innerText = stripAnsi(text);
+    
+    const plainText = stripAnsi(text);
+    div.textContent = plainText;
+    
+    // Respect active search filter
+    if (query && !plainText.toLowerCase().includes(query)) {
+      div.classList.add('hidden');
+    } else if (query) {
+      div.classList.add('search-match');
+      console.log('New log match:', plainText);
+    }
+    
     logsContent.appendChild(div);
     
     // Auto-scroll to bottom
@@ -295,22 +307,30 @@
 
   // --- Advanced Log Capabilities ---
   function searchLogs() {
-    const query = document.getElementById('logSearchInput').value.toLowerCase();
+    const query = document.getElementById('logSearchInput').value.toLowerCase().trim();
     const lines = logsContent.getElementsByClassName('log-line');
+    console.log(`Filtering ${lines.length} lines for: "${query}"`);
+    
     for (let i = 0; i < lines.length; i++) {
-      if (lines[i].innerText.toLowerCase().includes(query)) {
-        lines[i].style.display = 'block';
+      const text = lines[i].textContent.toLowerCase();
+      const match = text.includes(query);
+      
+      if (match) {
+        lines[i].classList.remove('hidden');
         if (query) {
-          // Highlight hack (very basic)
-          lines[i].style.backgroundColor = '#1e293b';
+          lines[i].classList.add('search-match');
         } else {
-          lines[i].style.backgroundColor = 'transparent';
+          lines[i].classList.remove('search-match');
         }
       } else {
-        lines[i].style.display = 'none';
+        lines[i].classList.add('hidden');
+        lines[i].classList.remove('search-match');
       }
     }
   }
+
+  // Attach input listener for search
+  document.getElementById('logSearchInput').addEventListener('input', searchLogs);
 
   function downloadLogs() {
     const text = logsContent.innerText;
@@ -390,5 +410,12 @@
   .wrap-enabled .log-line {
     white-space: pre-wrap;
     word-break: break-all;
+  }
+  .log-line.hidden {
+    display: none !important;
+  }
+  .log-line.search-match {
+    background-color: rgba(56, 189, 248, 0.15);
+    border-left: 2px solid var(--accent);
   }
 </style>

@@ -5,10 +5,13 @@ const dockerService = require('../services/docker.service');
 exports.getAdminDashboard = async (req, res) => {
   try {
     const [users] = await pool.query('SELECT id, name, email, role, status, alert_email FROM users');
-    // Fetch admin's own alert_email from DB (fresh, not just session)
-    const [adminRow] = await pool.query('SELECT alert_email FROM users WHERE id = ?', [req.session.user.id]);
-    const adminAlertEmail = adminRow[0]?.alert_email || '';
-    res.render('admin', { users, adminAlertEmail });
+    // Fetch admin's own alert settings from DB
+    const [adminRow] = await pool.query(
+      'SELECT alert_email, slack_webhook, discord_webhook, custom_webhook FROM users WHERE id = ?', 
+      [req.session.user.id]
+    );
+    const notifications = adminRow[0] || {};
+    res.render('admin', { users, notifications, page: 'admin' });
   } catch (err) {
     console.error('Admin dashboard error:', err);
     res.status(500).send('Internal Server Error');
@@ -42,12 +45,21 @@ exports.getAssignContainers = async (req, res) => {
     const containers = await dockerService.listContainers();
 
     // Sync containers with DB using Name as stable key
+    const activeNames = [];
     for (const c of containers) {
       const name = c.Names[0].replace('/', '');
+      activeNames.push(name);
       await pool.query(
         'INSERT INTO containers (container_id, name, image, status) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE container_id = ?, status = ?',
         [c.Id, name, c.Image, c.Status, c.Id, c.Status]
       );
+    }
+
+    // Prune containers from DB that are no longer in the Docker list
+    if (activeNames.length > 0) {
+      await pool.query('DELETE FROM containers WHERE name NOT IN (?)', [activeNames]);
+    } else {
+      await pool.query('DELETE FROM containers');
     }
 
     const [dbContainers] = await pool.query('SELECT * FROM containers');

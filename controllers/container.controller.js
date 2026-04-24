@@ -2,6 +2,7 @@ const { pool } = require('../config/db');
 const dockerService = require('../services/docker.service');
 const metricsService = require('../services/metrics.service');
 const logStreamManager = require('../services/logStreamManager');
+const hostService = require('../services/host.service');
 
 /**
  * Resolves a container instance by ID or Name
@@ -59,11 +60,12 @@ exports.getDashboard = async (req, res) => {
       }));
     }
 
-    // Fetch current user's alert email
-    const [userRow] = await pool.query('SELECT alert_email FROM users WHERE id = ?', [userId]);
-    const alertEmail = userRow[0]?.alert_email || '';
+    const [userRow] = await pool.query('SELECT alert_email, slack_webhook, discord_webhook, custom_webhook FROM users WHERE id = ?', [userId]);
+    const notifications = userRow[0] || {};
 
-    res.render('dashboard', { containers, alertEmail });
+    const hostMetrics = await hostService.getMetrics();
+
+    res.render('dashboard', { containers, notifications, role, hostMetrics });
   } catch (err) {
     console.error('Dashboard error:', err);
     res.status(500).send('Internal Server Error');
@@ -82,17 +84,23 @@ exports.getContainerDetail = async (req, res) => {
     const stats = await container.stats({ stream: false });
     const cpu = metricsService.calculateCPU(stats);
     const ram = metricsService.calculateMemory(stats);
+    const network = metricsService.calculateNetwork(stats);
+    const blockIo = metricsService.calculateBlockIO(stats);
 
     res.render('container', { 
       container: {
         id: containerId,
-        stable_name: containerId, // Could be ID or Name but we prefer name for URLs
+        stable_name: containerId,
         name: details.Name.replace('/', ''),
         image: details.Config.Image,
         status: details.State.Status,
-        created: details.Created
+        created: details.Created,
+        env: details.Config.Env || [],
+        mounts: details.Mounts || [],
+        networks: Object.keys(details.NetworkSettings.Networks || {}),
+        ports: details.NetworkSettings.Ports || {}
       },
-      metrics: { cpu, ram }
+      metrics: { cpu, ram, network, blockIo }
     });
   } catch (err) {
     console.error('Container detail error:', err);
@@ -183,5 +191,35 @@ exports.streamLogs = async (req, res) => {
     console.error(`[SSE] Error for ${containerId}:`, err.message);
     res.write(`data: [Error] ${err.message}\n\n`);
     res.end();
+  }
+};
+
+exports.containerAction = async (req, res) => {
+  const containerId = req.params.id;
+  const action = req.params.action;
+
+  if (req.session.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Permission denied. Admins only.' });
+  }
+
+  try {
+    const container = await resolveContainer(containerId);
+    const details = await container.inspect();
+    const realId = details.Id;
+
+    if (action === 'start') {
+      await dockerService.startContainer(realId);
+    } else if (action === 'stop') {
+      await dockerService.stopContainer(realId);
+    } else if (action === 'restart') {
+      await dockerService.restartContainer(realId);
+    } else {
+      return res.status(400).json({ error: 'Invalid action' });
+    }
+
+    res.json({ success: true, action, container: details.Name.replace('/', '') });
+  } catch (err) {
+    console.error(`Container action ${action} error:`, err);
+    res.status(500).json({ error: `Failed to ${action} container: ${err.message}` });
   }
 };

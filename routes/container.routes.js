@@ -10,6 +10,7 @@ router.get('/', containerController.getDashboard);
 router.get('/container/:id', containerController.getContainerDetail);
 router.get('/container/:id/logs', containerController.getHistoricalLogs);
 router.get('/container/:id/stream', containerController.streamLogs);
+router.post('/container/:id/action/:action', containerController.containerAction);
 
 // Any logged-in user can update their own alert email
 router.post('/profile/alert-email', userController.updateAlertEmail);

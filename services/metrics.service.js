@@ -25,6 +25,51 @@ class MetricsService {
       percent
     };
   }
+
+  calculateNetwork(stats) {
+    if (!stats || !stats.networks) return { rx: '0B', tx: '0B' };
+    
+    let rx = 0;
+    let tx = 0;
+    
+    Object.values(stats.networks).forEach(net => {
+      rx += net.rx_bytes || 0;
+      tx += net.tx_bytes || 0;
+    });
+
+    return {
+      rx: this.formatBytes(rx),
+      tx: this.formatBytes(tx)
+    };
+  }
+
+  calculateBlockIO(stats) {
+    if (!stats || !stats.blkio_stats || !stats.blkio_stats.io_service_bytes_recursive) {
+      return { read: '0B', write: '0B' };
+    }
+
+    let read = 0;
+    let write = 0;
+
+    stats.blkio_stats.io_service_bytes_recursive.forEach(io => {
+      if (io.op === 'Read') read += io.value;
+      if (io.op === 'Write') write += io.value;
+    });
+
+    return {
+      read: this.formatBytes(read),
+      write: this.formatBytes(write)
+    };
+  }
+
+  formatBytes(bytes, decimals = 2) {
+    if (bytes === 0) return '0B';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + sizes[i];
+  }
 }
 
 module.exports = new MetricsService();

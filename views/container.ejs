@@ -19,48 +19,174 @@
 </div>
 
 <div class="row mb-4">
-  <div class="col-md-6">
+  <div class="col-md-3">
     <div class="card shadow-sm h-100">
       <div class="card-body">
-        <h5 class="card-title text-muted mb-3"><i class="bi bi-cpu me-2"></i>CPU Usage</h5>
+        <h5 class="card-title text-muted mb-3"><i class="bi bi-cpu me-2"></i>CPU</h5>
         <div class="d-flex align-items-center">
-          <div class="progress flex-grow-1" style="height: 25px; background-color: #334155;">
+          <div class="progress flex-grow-1" style="height: 12px; background-color: #334155;">
             <div id="cpu-bar" class="progress-bar" role="progressbar" style="width: <%= metrics.cpu %>%; background-color: #38bdf8;" aria-valuenow="<%= metrics.cpu %>" aria-valuemin="0" aria-valuemax="100"></div>
           </div>
-          <span class="ms-3 fw-bold fs-4"><span id="cpu-text"><%= metrics.cpu %></span>%</span>
+          <span class="ms-3 fw-bold"><span id="cpu-text"><%= metrics.cpu %></span>%</span>
         </div>
       </div>
     </div>
   </div>
-  <div class="col-md-6">
+  <div class="col-md-3">
     <div class="card shadow-sm h-100">
       <div class="card-body">
-        <h5 class="card-title text-muted mb-3"><i class="bi bi-memory me-2"></i>Memory Usage</h5>
+        <h5 class="card-title text-muted mb-3"><i class="bi bi-memory me-2"></i>RAM</h5>
         <div class="d-flex align-items-center">
-          <div class="progress flex-grow-1" style="height: 25px; background-color: #334155;">
+          <div class="progress flex-grow-1" style="height: 12px; background-color: #334155;">
             <div id="ram-bar" class="progress-bar" role="progressbar" style="width: <%= metrics.ram.percent %>%; background-color: #a855f7;" aria-valuenow="<%= metrics.ram.percent %>" aria-valuemin="0" aria-valuemax="100"></div>
           </div>
-          <span class="ms-3 fw-bold fs-4"><span id="ram-text"><%= metrics.ram.usage %></span>MB</span>
+          <span class="ms-3 fw-bold"><span id="ram-text"><%= metrics.ram.percent %></span>%</span>
         </div>
-        <p class="small text-muted mt-2 mb-0">Limit: <%= metrics.ram.limit %>MB</p>
+        <p class="small text-muted mt-1 mb-0"><%= metrics.ram.usage %> / <%= metrics.ram.limit %> MB</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title text-muted mb-3"><i class="bi bi-globe me-2"></i>Network</h5>
+        <div class="d-flex justify-content-between">
+          <div class="text-info"><i class="bi bi-arrow-down small me-1"></i><%= metrics.network.rx %></div>
+          <div class="text-primary"><i class="bi bi-arrow-up small me-1"></i><%= metrics.network.tx %></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title text-muted mb-3"><i class="bi bi-hdd me-2"></i>Disk I/O</h5>
+        <div class="d-flex justify-content-between">
+          <div class="text-info"><i class="bi bi-download small me-1"></i><%= metrics.blockIo.read %></div>
+          <div class="text-primary"><i class="bi bi-upload small me-1"></i><%= metrics.blockIo.write %></div>
+        </div>
       </div>
     </div>
   </div>
 </div>
 
 <div class="card shadow-md">
-  <div class="card-header bg-dark d-flex justify-content-between align-items-center">
-    <span class="fw-bold"><i class="bi bi-terminal me-2"></i>Live Logs</span>
-    <div class="d-flex gap-2">
-      <button class="btn btn-sm btn-outline-secondary" onclick="clearLogs()">Clear</button>
-      <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#filterModal">
-        <i class="bi bi-filter me-1"></i>Filter Logs
-      </button>
-    </div>
+  <div class="card-header bg-dark p-0 border-bottom-0">
+    <ul class="nav nav-tabs border-secondary" id="containerTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active text-white" data-bs-toggle="tab" data-bs-target="#logs-tab" type="button">
+          <i class="bi bi-card-text me-2"></i>Live Logs
+        </button>
+      </li>
+      <% if (typeof user !== 'undefined' && user && user.role === 'admin') { %>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link text-white" data-bs-toggle="tab" data-bs-target="#terminal-tab" type="button" id="tab-terminal-btn">
+          <i class="bi bi-terminal me-2"></i>Terminal
+        </button>
+      </li>
+      <% } %>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link text-white" data-bs-toggle="tab" data-bs-target="#details-tab" type="button">
+          <i class="bi bi-info-circle me-2"></i>Details
+        </button>
+      </li>
+    </ul>
   </div>
   <div class="card-body p-0">
-    <div id="logs-container">
-      <div id="logs-content"></div>
+    <div class="tab-content" id="containerTabsContent">
+      <!-- LOGS TAB -->
+      <div class="tab-pane fade show active" id="logs-tab">
+        <div class="bg-dark d-flex justify-content-between align-items-center p-2 border-bottom border-secondary">
+          <input type="text" id="logSearchInput" placeholder="Search logs..." class="form-control form-control-sm bg-secondary text-white border-0 w-25" onkeyup="searchLogs()">
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary" onclick="toggleWordWrap()" id="wrapBtn">Wrap: On</button>
+            <button class="btn btn-sm btn-outline-primary" onclick="downloadLogs()"><i class="bi bi-download"></i></button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="clearLogs()">Clear</button>
+            <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#filterModal">
+              <i class="bi bi-filter me-1"></i>Filter
+            </button>
+          </div>
+        </div>
+        <div id="logs-container" class="wrap-enabled">
+          <div id="logs-content"></div>
+        </div>
+      </div>
+      
+      <!-- TERMINAL TAB -->
+      <% if (typeof user !== 'undefined' && user && user.role === 'admin') { %>
+      <div class="tab-pane fade" id="terminal-tab" style="background: #000; height: 600px; padding: 10px;">
+        <div id="terminal-container" style="width: 100%; height: 100%;"></div>
+      </div>
+      <% } %>
+
+      <!-- DETAILS TAB -->
+      <div class="tab-pane fade p-4" id="details-tab" style="background: #0d1117;">
+        <div class="row">
+          <div class="col-md-6 mb-4">
+            <h6 class="text-info mb-3 text-uppercase small fw-bold">Environment Variables</h6>
+            <div class="p-3 rounded border border-secondary" style="background: #161b22;">
+              <% if (container.env.length > 0) { %>
+                <% container.env.forEach(e => { %>
+                  <div class="mb-1 text-truncate"><code class="text-success small"><%= e %></code></div>
+                <% }) %>
+              <% } else { %>
+                <span class="text-muted small">None</span>
+              <% } %>
+            </div>
+          </div>
+          <div class="col-md-6 mb-4">
+            <h6 class="text-info mb-3 text-uppercase small fw-bold">Port Mappings</h6>
+            <div class="p-3 rounded border border-secondary" style="background: #161b22;">
+              <% if (Object.keys(container.ports).length > 0) { %>
+                <% Object.entries(container.ports).forEach(([port, bindings]) => { %>
+                  <div class="mb-2">
+                    <span class="badge bg-secondary me-2"><%= port %></span>
+                    <% if (bindings) { %>
+                      <i class="bi bi-arrow-right me-2"></i>
+                      <% bindings.forEach(b => { %>
+                        <code class="text-warning small"><%= b.HostIp %>:<%= b.HostPort %></code>
+                      <% }) %>
+                    <% } else { %>
+                      <span class="text-muted small">(Internal only)</span>
+                    <% } %>
+                  </div>
+                <% }) %>
+              <% } else { %>
+                <span class="text-muted small">None</span>
+              <% } %>
+            </div>
+          </div>
+          <div class="col-md-12 mb-4">
+            <h6 class="text-info mb-3 text-uppercase small fw-bold">Mounted Volumes</h6>
+            <div class="p-3 rounded border border-secondary" style="background: #161b22;">
+              <% if (container.mounts.length > 0) { %>
+                <div class="table-responsive">
+                  <table class="table table-sm table-dark table-borderless mb-0">
+                    <thead>
+                      <tr class="text-muted small">
+                        <th>Source</th>
+                        <th>Destination</th>
+                        <th>Mode</th>
+                      </tr>
+                    </thead>
+                    <tbody class="small">
+                      <% container.mounts.forEach(m => { %>
+                        <tr>
+                          <td class="text-truncate" title="<%= m.Source %>"><%= m.Source %></td>
+                          <td class="text-truncate" title="<%= m.Destination %>"><%= m.Destination %></td>
+                          <td><span class="badge bg-secondary"><%= m.Mode || 'rw' %></span></td>
+                        </tr>
+                      <% }) %>
+                    </tbody>
+                  </table>
+                </div>
+              <% } else { %>
+                <span class="text-muted small">None</span>
+              <% } %>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -167,14 +293,101 @@
     }
   }
 
-  // Optional: Update metrics via polling or additional socket events
-  // For MVP, we'll just show status at load time.
+  // --- Advanced Log Capabilities ---
+  function searchLogs() {
+    const query = document.getElementById('logSearchInput').value.toLowerCase();
+    const lines = logsContent.getElementsByClassName('log-line');
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].innerText.toLowerCase().includes(query)) {
+        lines[i].style.display = 'block';
+        if (query) {
+          // Highlight hack (very basic)
+          lines[i].style.backgroundColor = '#1e293b';
+        } else {
+          lines[i].style.backgroundColor = 'transparent';
+        }
+      } else {
+        lines[i].style.display = 'none';
+      }
+    }
+  }
+
+  function downloadLogs() {
+    const text = logsContent.innerText;
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `logs-${containerId}-${new Date().toISOString()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function toggleWordWrap() {
+    logsContainer.classList.toggle('wrap-enabled');
+    const wrapBtn = document.getElementById('wrapBtn');
+    if (logsContainer.classList.contains('wrap-enabled')) {
+      wrapBtn.innerText = 'Wrap: On';
+    } else {
+      wrapBtn.innerText = 'Wrap: Off';
+    }
+  }
+
+  // --- Terminal Setup ---
+  <% if (typeof user !== 'undefined' && user && user.role === 'admin') { %>
+  const termBtn = document.getElementById('tab-terminal-btn');
+  let termInit = false;
+  
+  termBtn.addEventListener('shown.bs.tab', () => {
+    if (termInit) return;
+    termInit = true;
+    
+    const term = new Terminal({
+      theme: { background: '#000000', foreground: '#ffffff' },
+      cursorBlink: true
+    });
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(document.getElementById('terminal-container'));
+    fitAddon.fit();
+
+    const socket = io();
+    socket.emit('terminal:start', { containerId });
+
+    socket.on('terminal:ready', () => {
+      term.focus();
+      socket.emit('terminal:resize', { cols: term.cols, rows: term.rows });
+    });
+
+    socket.on('terminal:data', (data) => {
+      term.write(data);
+    });
+
+    term.onData((data) => {
+      socket.emit('terminal:input', data);
+    });
+
+    window.addEventListener('resize', () => {
+      fitAddon.fit();
+      socket.emit('terminal:resize', { cols: term.cols, rows: term.rows });
+    });
+  });
+  <% } %>
+
 </script>
+
+<!-- XTerm JS and CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
 
 <style>
   .log-line {
     border-bottom: 1px solid #1e293b;
     padding: 2px 0;
+    white-space: pre;
+  }
+  .wrap-enabled .log-line {
     white-space: pre-wrap;
     word-break: break-all;
   }

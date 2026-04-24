@@ -89,6 +89,39 @@ class DockerService {
     }
   }
 
+  async startContainer(containerId) {
+    try {
+      const container = docker.getContainer(containerId);
+      await container.start();
+      return true;
+    } catch (err) {
+      console.error('Docker startContainer error:', err.message);
+      throw err;
+    }
+  }
+
+  async stopContainer(containerId) {
+    try {
+      const container = docker.getContainer(containerId);
+      await container.stop();
+      return true;
+    } catch (err) {
+      console.error('Docker stopContainer error:', err.message);
+      throw err;
+    }
+  }
+
+  async restartContainer(containerId) {
+    try {
+      const container = docker.getContainer(containerId);
+      await container.restart();
+      return true;
+    } catch (err) {
+      console.error('Docker restartContainer error:', err.message);
+      throw err;
+    }
+  }
+
   getDockerInstance() {
     return docker;
   }

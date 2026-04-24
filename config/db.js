@@ -86,6 +86,17 @@ async function initializeDatabase() {
     }
 
     try {
+      await connection.query('ALTER TABLE users ADD COLUMN slack_webhook VARCHAR(255) DEFAULT NULL');
+      await connection.query('ALTER TABLE users ADD COLUMN discord_webhook VARCHAR(255) DEFAULT NULL');
+      await connection.query('ALTER TABLE users ADD COLUMN custom_webhook VARCHAR(255) DEFAULT NULL');
+      await connection.query('ALTER TABLE users ADD COLUMN cpu_threshold INT DEFAULT 90');
+      await connection.query('ALTER TABLE users ADD COLUMN ram_threshold INT DEFAULT 90');
+      console.log('Added webhook and threshold columns to users table');
+    } catch (err) {
+      // Columns probably exist
+    }
+
+    try {
       await connection.query('ALTER TABLE containers DROP INDEX container_id');
       await connection.query('ALTER TABLE containers MODIFY container_id VARCHAR(100)');
       await connection.query('ALTER TABLE containers ADD UNIQUE INDEX (name)');

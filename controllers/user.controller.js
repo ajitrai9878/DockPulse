@@ -141,16 +141,21 @@ exports.postAssignContainers = async (req, res) => {
  */
 exports.updateAlertEmail = async (req, res) => {
   const userId = req.session.user.id;
-  const { alert_email } = req.body;
+  const { alert_email, slack_webhook, discord_webhook, custom_webhook } = req.body;
 
   try {
-    await pool.query('UPDATE users SET alert_email = ? WHERE id = ?', [alert_email || null, userId]);
-    // Update session so the view reflects the change immediately
+    await pool.query(
+      'UPDATE users SET alert_email = ?, slack_webhook = ?, discord_webhook = ?, custom_webhook = ? WHERE id = ?', 
+      [alert_email || null, slack_webhook || null, discord_webhook || null, custom_webhook || null, userId]
+    );
     req.session.user.alert_email = alert_email || null;
+    req.session.user.slack_webhook = slack_webhook || null;
+    req.session.user.discord_webhook = discord_webhook || null;
+    req.session.user.custom_webhook = custom_webhook || null;
     res.redirect(req.session.user.role === 'admin' ? '/admin' : '/');
   } catch (err) {
-    console.error('Update alert email error:', err);
-    res.status(500).send('Failed to update alert email');
+    console.error('Update notifications error:', err);
+    res.status(500).send('Failed to update notifications');
   }
 };
 

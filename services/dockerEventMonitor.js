@@ -36,32 +36,33 @@ async function fetchLogs(containerId, tail = 50) {
  */
 async function getRecipients(containerDbId) {
   try {
-    // Admin emails
+    // Admin users
     const [adminRows] = await pool.query(
-      `SELECT alert_email FROM users WHERE role = 'admin' AND alert_email IS NOT NULL AND alert_email != '' AND status = 'active'`
+      `SELECT alert_email, slack_webhook, discord_webhook, custom_webhook FROM users WHERE role = 'admin' AND status = 'active'`
     );
 
     // User emails for assigned container
     let userRows = [];
     if (containerDbId) {
       [userRows] = await pool.query(
-        `SELECT u.alert_email FROM users u
+        `SELECT u.alert_email, u.slack_webhook, u.discord_webhook, u.custom_webhook FROM users u
          JOIN user_containers uc ON u.id = uc.user_id
-         WHERE uc.container_id = ? AND u.alert_email IS NOT NULL AND u.alert_email != '' AND u.status = 'active'`,
+         WHERE uc.container_id = ? AND u.status = 'active'`,
         [containerDbId]
       );
     }
 
-    const emails = [
-      ...adminRows.map(r => r.alert_email),
-      ...userRows.map(r => r.alert_email),
-    ];
-
-    // Deduplicate
-    return [...new Set(emails)];
+    const allRows = [...adminRows, ...userRows];
+    
+    return {
+      emails: [...new Set(allRows.map(r => r.alert_email).filter(e => e))],
+      slack: [...new Set(allRows.map(r => r.slack_webhook).filter(e => e))],
+      discord: [...new Set(allRows.map(r => r.discord_webhook).filter(e => e))],
+      custom: [...new Set(allRows.map(r => r.custom_webhook).filter(e => e))]
+    };
   } catch (err) {
     console.error('[EventMonitor] Failed to fetch recipients:', err.message);
-    return [];
+    return { emails: [], slack: [], discord: [], custom: [] };
   }
 }
 
@@ -169,25 +170,59 @@ async function processEvent(event) {
 
   // Get recipients
   const recipients = await getRecipients(dbContainerId);
-  if (!recipients.length) {
-    console.log(`[EventMonitor] No alert emails configured — skipping notification for ${containerName}.`);
+  const totalRecipients = recipients.emails.length + recipients.slack.length + recipients.discord.length + recipients.custom.length;
+  
+  if (totalRecipients === 0) {
+    console.log(`[EventMonitor] No alerts configured — skipping notification for ${containerName}.`);
     return;
   }
 
+  const payload = {
+    containerName,
+    image,
+    eventType,
+    exitCode,
+    occurredAt,
+    logs,
+    rca,
+  };
+
+  const dispatchWebhook = async (url, type) => {
+    try {
+      let body;
+      const shortLogs = logs.split('\n').slice(-10).join('\n'); // keep it short for chat
+      if (type === 'slack') {
+        body = { text: `🚨 *DockPulse Alert*\nContainer: \`${containerName}\`\nEvent: *${eventType}*\nRCA: ${rca || 'None'}\nLogs:\n\`\`\`\n${shortLogs}\n\`\`\`` };
+      } else if (type === 'discord') {
+        body = { content: `🚨 **DockPulse Alert**\nContainer: \`${containerName}\`\nEvent: **${eventType}**\nRCA: ${rca || 'None'}\nLogs:\n\`\`\`\n${shortLogs}\n\`\`\`` };
+      } else {
+        body = payload;
+      }
+      
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+    } catch(err) {
+      console.error(`[EventMonitor] Failed webhook ${type} to ${url.substring(0,20)}...`);
+    }
+  };
+
+  for (const url of recipients.slack) await dispatchWebhook(url, 'slack');
+  for (const url of recipients.discord) await dispatchWebhook(url, 'discord');
+  for (const url of recipients.custom) await dispatchWebhook(url, 'custom');
+
   // Send email
-  try {
-    await emailService.sendAlertEmail({
-      to: recipients,
-      containerName,
-      image,
-      eventType,
-      exitCode,
-      occurredAt,
-      logs,
-      rca,
-    });
-  } catch (err) {
-    console.error(`[EventMonitor] Email send failed for ${containerName}:`, err.message);
+  if (recipients.emails.length > 0) {
+    try {
+      await emailService.sendAlertEmail({
+        ...payload,
+        to: recipients.emails
+      });
+    } catch (err) {
+      console.error(`[EventMonitor] Email send failed for ${containerName}:`, err.message);
+    }
   }
 }
 

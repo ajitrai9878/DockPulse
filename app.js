@@ -9,6 +9,7 @@ const morgan = require('morgan');
 const { initializeDatabase } = require('./config/db');
 const { seed } = require('./scripts/seed');
 const { startMonitor } = require('./services/dockerEventMonitor');
+const { startMetricsMonitor } = require('./services/metricsMonitor');
 
 dotenv.config();
 
@@ -23,12 +24,18 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Session
-app.use(session({
+const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET || 'supersecret',
   resave: false,
   saveUninitialized: false,
   cookie: { secure: false } // Set to true if using HTTPS
-}));
+});
+app.use(sessionMiddleware);
+
+// Share session with socket.io
+io.use((socket, next) => {
+  sessionMiddleware(socket.request, socket.request.res || {}, next);
+});
 
 // View Engine
 app.use(expressLayouts);
@@ -53,6 +60,7 @@ app.use('/', containerRoutes);
 
 // Sockets
 require('./sockets/log.socket')(io);
+require('./sockets/terminal.socket')(io);
 
 // Database Initialization & Auto-Seeding
 initializeDatabase()
@@ -62,8 +70,9 @@ initializeDatabase()
     server.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
     });
-    // Start Docker event monitor after DB is ready
+    // Start monitors
     startMonitor();
+    startMetricsMonitor();
   }).catch(err => {
     console.error('❌ Failed to initialize application:', err);
     process.exit(1);

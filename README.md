@@ -1,4 +1,4 @@
-# 🚀 DockPulse (v1.1) - Premium Docker Monitoring & Log Streaming
+# 🚀 DockPulse - Premium Docker Monitoring & Log Streaming
 
 **DockPulse** is a lightweight, high-performance monitoring dashboard for Docker containers. It provides real-time health metrics, live streaming logs via WebSockets, and a robust Role-Based Access Control (RBAC) system to manage container visibility across your team.
 

@@ -4,7 +4,7 @@ class MetricsService {
 
     const cpuDelta = stats.cpu_stats.cpu_usage.total_usage - stats.precpu_stats.cpu_usage.total_usage;
     const systemDelta = stats.cpu_stats.system_cpu_usage - stats.precpu_stats.system_cpu_usage;
-    const onlineCPUs = stats.cpu_stats.online_cpus || stats.cpu_stats.cpu_usage.percpu_usage.length || 1;
+    const onlineCPUs = stats.cpu_stats.online_cpus || stats.cpu_stats.cpu_usage.percpu_usage?.length || 1;
 
     if (systemDelta > 0 && cpuDelta > 0) {
       return ((cpuDelta / systemDelta) * onlineCPUs * 100).toFixed(2);

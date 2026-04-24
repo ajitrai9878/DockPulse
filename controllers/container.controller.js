@@ -30,7 +30,7 @@ exports.getDashboard = async (req, res) => {
       // Admins see all containers
       const dockerContainers = await dockerService.listContainers();
       containers = dockerContainers.map(c => ({
-        container_id: c.Id,
+        container_id: c.Names[0].replace('/', ''),
         name: c.Names[0].replace('/', ''),
         image: c.Image,
         status: c.Status
@@ -52,7 +52,7 @@ exports.getDashboard = async (req, res) => {
       );
 
       containers = userDockerContainers.map(c => ({
-        container_id: c.Id,
+        container_id: c.Names[0].replace('/', ''),
         name: c.Names[0].replace('/', ''),
         image: c.Image,
         status: c.Status
@@ -85,7 +85,7 @@ exports.getContainerDetail = async (req, res) => {
 
     res.render('container', { 
       container: {
-        id: realId,
+        id: containerId,
         stable_name: containerId, // Could be ID or Name but we prefer name for URLs
         name: details.Name.replace('/', ''),
         image: details.Config.Image,
@@ -105,20 +105,16 @@ exports.getHistoricalLogs = async (req, res) => {
   const { since, until } = req.query;
 
   try {
-    const options = {};
     const container = await resolveContainer(containerId);
-    const logBuffer = await container.logs({
-      stdout: true,
-      stderr: true,
-      follow: false,
-      timestamps: true,
-      ...options
-    });
+    const details = await container.inspect();
+    const realId = details.Id;
     
-    let logs = logBuffer.toString('utf-8');
-    if (!options.raw) {
-      logs = logs.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
-    }
+    // Using dockerService.getLogs to properly parse multiplexed streams and prevent internal server errors
+    let logs = await dockerService.getLogs(realId, { 
+      since, 
+      until, 
+      raw: false 
+    });
     
     res.json({ logs });
   } catch (err) {

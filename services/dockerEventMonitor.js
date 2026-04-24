@@ -3,6 +3,11 @@
 const Docker = require('dockerode');
 const { pool } = require('../config/db');
 const emailService = require('./email.service');
+const dockerService = require('./docker.service');
+
+const ALERT_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+const containerAlertTimestamps = new Map(); // containerName -> timestamp
+const pendingStopEvents = new Map(); // containerName -> timeoutId
 
 const docker = new Docker({
   socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock',
@@ -16,20 +21,8 @@ const WATCHED_EVENTS = new Set(['die', 'stop', 'start', 'restart', 'destroy']);
  */
 async function fetchLogs(containerId, tail = 50) {
   try {
-    const container = docker.getContainer(containerId);
-    const buf = await container.logs({
-      stdout: true,
-      stderr: true,
-      follow: false,
-      timestamps: true,
-      tail,
-    });
-    let raw = buf.toString('utf-8');
-    // Strip Docker binary stream header bytes (first 8 bytes per chunk)
-    raw = raw.replace(/[\u0000-\u0008]/g, '');
-    // Strip ANSI codes
-    raw = raw.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
-    return raw.trim();
+    const raw = await dockerService.getLogs(containerId, { tail, raw: false });
+    return raw ? raw.trim() : '';
   } catch (err) {
     return `[Logs unavailable: ${err.message}]`;
   }
@@ -110,13 +103,44 @@ async function handleEvent(event) {
   if (!event || event.Type !== 'container') return;
   if (!WATCHED_EVENTS.has(event.Action)) return;
 
+  const eventType     = event.Action;
+  const containerId   = event.id || event.Actor?.ID;
+  const attrs         = event.Actor?.Attributes || {};
+  const containerName = attrs.name || containerId;
+
+  // --- Aggregation logic for die/stop ---
+  if (eventType === 'die') {
+    // Delay 'die' alert by 2 seconds to see if a 'stop' follows
+    if (pendingStopEvents.has(containerName)) {
+      clearTimeout(pendingStopEvents.get(containerName));
+    }
+    const timeout = setTimeout(() => {
+      pendingStopEvents.delete(containerName);
+      processEvent({...event});
+    }, 2000);
+    pendingStopEvents.set(containerName, timeout);
+    return;
+  }
+  
+  if (eventType === 'stop') {
+    // If we received a 'stop', cancel the pending 'die' alert (if any)
+    if (pendingStopEvents.has(containerName)) {
+      clearTimeout(pendingStopEvents.get(containerName));
+      pendingStopEvents.delete(containerName);
+    }
+  }
+
+  await processEvent(event);
+}
+
+async function processEvent(event) {
   const eventType     = event.Action;        // die | stop | start | restart | destroy
-  const containerId   = event.id;            // short/full container ID
+  const containerId   = event.id || event.Actor?.ID; // short/full container ID
   const attrs         = event.Actor?.Attributes || {};
   const containerName = attrs.name || containerId;
   const image         = attrs.image || 'unknown';
   const exitCode      = attrs.exitCode != null ? parseInt(attrs.exitCode, 10) : null;
-  const occurredAt    = new Date(event.time * 1000);
+  const occurredAt    = new Date((event.time || (Date.now()/1000)) * 1000);
 
   console.log(`[EventMonitor] ${eventType.toUpperCase()} → ${containerName} (exit: ${exitCode ?? '-'})`);
 
@@ -131,6 +155,17 @@ async function handleEvent(event) {
 
   // Persist to DB
   await logEventToDB({ containerName, containerId, eventType, exitCode, rca, logs });
+
+  // Debounce email logic (5 min cooldown)
+  const lastAlert = containerAlertTimestamps.get(containerName) || 0;
+  const now = Date.now();
+  if (now - lastAlert < ALERT_COOLDOWN_MS) {
+    console.log(`[EventMonitor] Suppressing email alert for ${containerName} due to cooldown.`);
+    return;
+  }
+  
+  // Update last alert timestamp
+  containerAlertTimestamps.set(containerName, now);
 
   // Get recipients
   const recipients = await getRecipients(dbContainerId);
